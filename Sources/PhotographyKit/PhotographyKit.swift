@@ -15,7 +15,7 @@ import AVFoundation
 
 
 
-enum PhotographyKitError: Error {
+public enum PhotographyKitError: Error {
     case cameraPermissionDenied
     case imageCaptureFailed
     case failedToResetCamera
