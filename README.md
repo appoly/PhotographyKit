@@ -31,7 +31,6 @@ Once you have your delegate setup, you can initialize your PhotographyKit object
 - Saturation: A Float representation of the image's saturation ranging from 0-1, default value is 0.5
 - Brightness: A Float representation of the image's brightness ranging from 0-1, default value is 0.5
 
-Once this is done you can make a request:
 ```
 do {
     camera = try PhotographyKit(view: captureView, delegate: self, exif: nil, iptc: nil, gps: nil, filter: nil)
