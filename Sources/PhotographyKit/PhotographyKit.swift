@@ -21,6 +21,7 @@ public enum PhotographyKitError: Error {
     case failedToResetCamera
     case failedToConnectToDeviceCamera
     case failedToConnectToDeviceTorch
+    case failedToCreateVideoFile
 }
 
 
@@ -38,6 +39,8 @@ extension PhotographyKitError: LocalizedError {
                 return "Failed to connect to device camera"
             case .failedToConnectToDeviceTorch:
                 return "Failed to connect to device torch"
+            case .failedToCreateVideoFile:
+                return "Failed to create video file for recording"
         }
     }
 }
@@ -46,7 +49,10 @@ extension PhotographyKitError: LocalizedError {
 
 public protocol PhotographyKitDelegate {
     
-    func didCaptureImage(image: UIImage)
+    func didCaptureImage(image: PhotographyKitPhoto)
+    func didStartRecordingVideo()
+    func didFinishRecordingVideo(url: URL)
+    func didFailRecordingVideo(error: Error)
     
 }
 
@@ -57,18 +63,13 @@ public class PhotographyKit: NSObject {
     // MARK: - Variables
     
     //User defined photo settings
-    private var exif: EXIF?
-    private var iptc: IPTC?
-    private var gps: GPS?
-    private var filter: CIFilter?
-    private var contrast: CGFloat = 0.5
-    private var saturation: CGFloat = 0.5
-    private var brightness: CGFloat = 0.5
     private let zoomSensitivity: CGFloat = 0.03
     private var delegate: PhotographyKitDelegate!
     
     //Capture session
     private var captureSession: AVCaptureSession?
+    private let movieFileOutput = AVCaptureMovieFileOutput()
+    private var timer: Timer?
     private var videoPreviewLayer: AVCaptureVideoPreviewLayer?
     private let imageOutput = AVCapturePhotoOutput()
     private var captureDevice: AVCaptureDevice?
@@ -93,6 +94,25 @@ public class PhotographyKit: NSObject {
     public func takePhoto() throws {
         imageOutput.capturePhoto(with: AVCapturePhotoSettings(), delegate: self)
         videoPreviewLayer?.connection?.isEnabled = false
+    }
+    
+    
+    /// Tries to start recording a video
+    public func startVideoRecording(maxLength: TimeInterval, url: URL? = nil) throws {
+        timer?.invalidate()
+        guard let safeURL = url == nil ? URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("\(UUID().uuidString).mp4") : url else {
+            throw PhotographyKitError.failedToCreateVideoFile
+        }
+        
+        movieFileOutput.startRecording(to: safeURL, recordingDelegate: self)
+        timer = Timer.scheduledTimer(withTimeInterval: maxLength, repeats: false, block: { [weak self] _ in
+            self?.endVideoRecording()
+        })
+    }
+    
+    
+    public func endVideoRecording() {
+        movieFileOutput.stopRecording()
     }
     
     
@@ -204,17 +224,10 @@ public class PhotographyKit: NSObject {
     
     // MARK: - Initializers
     
-    public init?(view: UIView, delegate: PhotographyKitDelegate, exif: EXIF?, iptc: IPTC?, gps: GPS?, filter: CIFilter?, contrast: CGFloat = 0.5, saturation: CGFloat = 0.5, brightness: CGFloat = 0.5) throws {
+    public init?(view: UIView, delegate: PhotographyKitDelegate) throws {
         super.init()
         
-        self.exif = exif
-        self.filter = filter
-        self.contrast = contrast
-        self.brightness = brightness
         self.delegate = delegate
-        self.exif = exif
-        self.iptc = iptc
-        self.gps = gps
         
         view.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(focus(_:))))
         view.addGestureRecognizer(UIPinchGestureRecognizer(target: self, action: #selector(zoom(_:))))
@@ -260,6 +273,10 @@ public class PhotographyKit: NSObject {
             captureSession.addInput(input)
             if(captureSession.canAddOutput(imageOutput)) {
                 captureSession.addOutput(imageOutput)
+            }
+            
+            if(captureSession.canAddOutput(movieFileOutput)) {
+                captureSession.addOutput(movieFileOutput)
             }
             
             setupCaptureSession(captureSession, view: view)
@@ -370,11 +387,26 @@ extension PhotographyKit: AVCapturePhotoCaptureDelegate {
         guard let image = getImageFrom(photo) else { return }
         
         let photo = PhotographyKitPhoto(image: image)
-        
-        photo.editImage(filter, contrast: contrast, brightness: brightness, saturation: saturation)
-        photo.editMetaData(exif, iptc: iptc, gps: gps)
-        
-        delegate.didCaptureImage(image: photo.image)
+        delegate.didCaptureImage(image: photo)
+    }
+    
+}
+
+
+
+extension PhotographyKit: AVCaptureFileOutputRecordingDelegate {
+    
+    public func fileOutput(_ output: AVCaptureFileOutput, didStartRecordingTo fileURL: URL, from connections: [AVCaptureConnection]) {
+        delegate.didStartRecordingVideo()
+    }
+    
+    
+    public func fileOutput(_ output: AVCaptureFileOutput, didFinishRecordingTo outputFileURL: URL, from connections: [AVCaptureConnection], error: Error?) {
+        guard error == nil else {
+            delegate.didFailRecordingVideo(error: error!)
+            return
+        }
+        delegate.didFinishRecordingVideo(url: outputFileURL)
     }
     
 }

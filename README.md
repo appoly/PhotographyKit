@@ -16,32 +16,42 @@ extension CameraViewController: PhotographyKitDelegate {
         imageView.image = image
     }
     
+    
+    func didStartRecordingVideo() {
+        print("Recording started...")
+    }
+    
+    
+    func didFinishRecordingVideo(url: URL) {
+        print("Finished recording video to \(url.absoluteString)")
+    }
+    
+    
+    func didFailRecordingVideo(error: Error) {
+        print("Failed recording video to \(url.absoluteString) with error: \(error.localizedDescription)")
+    }
+    
 }
 ```
 
-Once you have your delegate setup, you can initialize your PhotographyKit object. The initializer takes 9 arguments:
+Once you have your delegate setup, you can initialize your PhotographyKit object. The initializer takes 2 arguments:
 
 - A view that will be used to display your camera preview
 - The delegate which we declare above.
-- EXIF: An exif data object to add metadata to an image
-- IPTC: An IPTC data object to add metadata to an image
-- GPS: A GPS data object to add metadata to an image
-- Filter: A CIFilter object to add a filter to an image
-- Contrast: A Float representation of the image's contrast ranging from 0-1, default value is 0.5
-- Saturation: A Float representation of the image's saturation ranging from 0-1, default value is 0.5
-- Brightness: A Float representation of the image's brightness ranging from 0-1, default value is 0.5
 
 ```
 do {
-    camera = try PhotographyKit(view: captureView, delegate: self, exif: nil, iptc: nil, gps: nil, filter: nil)
+    camera = try PhotographyKit(view: captureView, delegate: self)
 } catch let error {
     showPhotographyKitError(error as? PhotographyKitError)
 }
 ```
 
-Once this is done you can toggle flash, switch cameras, and take photos
+Once this is done you can toggle flash, switch cameras, take photos and record videos
 ```
 try? camera.takePhoto()
+try? camera.startVideoRecording(maxLength: 15)
+camera.endVideoRecording
 try? camera.switchCamera()
 try? camera.toggleFlash(.auto)
 ```
