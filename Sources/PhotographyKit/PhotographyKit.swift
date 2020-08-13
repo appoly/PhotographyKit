@@ -21,6 +21,7 @@ public enum PhotographyKitError: Error {
     case failedToResetCamera
     case failedToConnectToDeviceCamera
     case failedToConnectToDeviceTorch
+    case failedToConnectToDeviceMicrophone
     case failedToCreateVideoFile
 }
 
@@ -39,6 +40,8 @@ extension PhotographyKitError: LocalizedError {
                 return "Failed to connect to device camera"
             case .failedToConnectToDeviceTorch:
                 return "Failed to connect to device torch"
+            case .failedToConnectToDeviceMicrophone:
+                return "Failed to connect to device microphone"
             case .failedToCreateVideoFile:
                 return "Failed to create video file for recording"
         }
@@ -100,14 +103,14 @@ public class PhotographyKit: NSObject {
     /// Tries to start recording a video
     public func startVideoRecording(maxLength: TimeInterval, url: URL? = nil) throws {
         timer?.invalidate()
-        guard let safeURL = url == nil ? URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("\(UUID().uuidString).mp4") : url else {
+        if let safeURL = url == nil ? URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("\(UUID().uuidString).mp4") : url {
+            movieFileOutput.startRecording(to: safeURL, recordingDelegate: self)
+            timer = Timer.scheduledTimer(withTimeInterval: maxLength, repeats: false, block: { [weak self] _ in
+                self?.endVideoRecording()
+            })
+        } else {
             throw PhotographyKitError.failedToCreateVideoFile
         }
-        
-        movieFileOutput.startRecording(to: safeURL, recordingDelegate: self)
-        timer = Timer.scheduledTimer(withTimeInterval: maxLength, repeats: false, block: { [weak self] _ in
-            self?.endVideoRecording()
-        })
     }
     
     
@@ -201,23 +204,19 @@ public class PhotographyKit: NSObject {
     
     /// Zooms the picture
     /// - Parameter percentage: New zoom percentage
-    public func zoom(factor: CGFloat = 1) throws {
+    public func zoom(factor: CGFloat = 1, velocity: CGFloat) throws {
         guard let device = captureDevice else {
             throw PhotographyKitError.failedToConnectToDeviceCamera
         }
         
-        do {
-            try device.lockForConfiguration()
-            defer { device.unlockForConfiguration() }
-            
-            let newFactor = currentZoomFactor + factor
-            if(newFactor < device.activeFormat.videoMaxZoomFactor && newFactor > device.activeFormat.videoMinZoomFactorForDepthDataDelivery) {
-                currentZoomFactor = newFactor
-                device.videoZoomFactor = newFactor
-            }
-        } catch let error {
-            throw error
-        }
+        let maxZoomFactor = device.activeFormat.videoMaxZoomFactor
+        let pinchVelocityDividerFactor: CGFloat = 5.0
+        
+        try device.lockForConfiguration()
+        defer { device.unlockForConfiguration() }
+
+        let desiredZoomFactor = device.videoZoomFactor + atan2(velocity, pinchVelocityDividerFactor)
+        device.videoZoomFactor = max(1.0, min(desiredZoomFactor, maxZoomFactor))
     }
     
     
@@ -248,31 +247,44 @@ public class PhotographyKit: NSObject {
     // MARK: - Setup
     
     private func setupCamera(view: UIView) throws {
-        do {
-            let deviceDiscoverySession = AVCaptureDevice.DiscoverySession(deviceTypes: [.builtInWideAngleCamera], mediaType: AVMediaType.video, position: .back)
-            
-            guard let captureDevice = deviceDiscoverySession.devices.first else {
-                throw PhotographyKitError.failedToConnectToDeviceCamera
-            }
-            try captureDevice.lockForConfiguration()
-            defer { captureDevice.unlockForConfiguration() }
-            captureDevice.torchMode = .auto
-            
-            try setupPreview(view: view, captureDevice: captureDevice)
-        } catch let error {
-            throw error
+        let videoDeviceDiscoverySession = AVCaptureDevice.DiscoverySession(deviceTypes: [.builtInWideAngleCamera], mediaType: AVMediaType.video, position: .back)
+        let audioDeviceDiscoverySession = AVCaptureDevice.DiscoverySession(deviceTypes: [.builtInMicrophone], mediaType: AVMediaType.audio, position: .unspecified)
+        
+        guard let videoCaptureDevice = videoDeviceDiscoverySession.devices.first else {
+            throw PhotographyKitError.failedToConnectToDeviceCamera
         }
+        guard let audioCaptureDevice = audioDeviceDiscoverySession.devices.first else {
+            throw PhotographyKitError.failedToConnectToDeviceMicrophone
+        }
+        try videoCaptureDevice.lockForConfiguration()
+        defer { videoCaptureDevice.unlockForConfiguration() }
+        videoCaptureDevice.torchMode = .auto
+        
+        try setupPreview(view: view, videoCaptureDevice: videoCaptureDevice, audioCaptureDevice: audioCaptureDevice)
     }
     
     
-    private func setupPreview(view: UIView, captureDevice: AVCaptureDevice) throws {
+    private func setupPreview(view: UIView, videoCaptureDevice: AVCaptureDevice, audioCaptureDevice: AVCaptureDevice) throws {
         do {
             let captureSession = AVCaptureSession()
             
-            let input = try AVCaptureDeviceInput(device: captureDevice)
-            captureSession.addInput(input)
+            guard let videoInput = try? AVCaptureDeviceInput(device: videoCaptureDevice) else {
+                throw PhotographyKitError.failedToConnectToDeviceCamera
+            }
+            guard let audioInput = try? AVCaptureDeviceInput(device: audioCaptureDevice) else {
+                throw PhotographyKitError.failedToConnectToDeviceMicrophone
+            }
+            
+            if(captureSession.canAddInput(videoInput)) {
+                captureSession.addInput(videoInput)
+            }
+            
             if(captureSession.canAddOutput(imageOutput)) {
                 captureSession.addOutput(imageOutput)
+            }
+            
+            if(captureSession.canAddInput(audioInput)) {
+                captureSession.addInput(audioInput)
             }
             
             if(captureSession.canAddOutput(movieFileOutput)) {
@@ -280,7 +292,7 @@ public class PhotographyKit: NSObject {
             }
             
             setupCaptureSession(captureSession, view: view)
-            self.captureDevice = captureDevice
+            self.captureDevice = videoCaptureDevice
             try startCaptureSession()
         } catch {
             throw PhotographyKitError.failedToConnectToDeviceCamera
@@ -343,7 +355,7 @@ public class PhotographyKit: NSObject {
             factor = factor * zoomSensitivity
         }
         
-        try? zoom(factor: factor)
+        try? zoom(factor: factor, velocity: sender.velocity)
     }
     
     
