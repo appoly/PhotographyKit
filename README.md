@@ -38,10 +38,11 @@ Once you have your delegate setup, you can initialize your PhotographyKit object
 
 - A view that will be used to display your camera preview
 - The delegate which we declare above.
+- Be aware that if your PhotographyKit object allows video then you will need microphone permissions
 
 ```
 do {
-    camera = try PhotographyKit(view: captureView, delegate: self)
+    camera = try PhotographyKit(view: captureView, delegate: self, allowsVideo: true)
 } catch let error {
     showPhotographyKitError(error as? PhotographyKitError)
 }

@@ -67,14 +67,15 @@ public class PhotographyKit: NSObject {
     
     //User defined photo settings
     private let zoomSensitivity: CGFloat = 0.03
-    private var delegate: PhotographyKitDelegate!
+    private let delegate: PhotographyKitDelegate
+    private let allowsVideo: Bool
     
     //Capture session
-    private var captureSession: AVCaptureSession?
     private let movieFileOutput = AVCaptureMovieFileOutput()
+    private let imageOutput = AVCapturePhotoOutput()
+    private var captureSession: AVCaptureSession?
     private var timer: Timer?
     private var videoPreviewLayer: AVCaptureVideoPreviewLayer?
-    private let imageOutput = AVCapturePhotoOutput()
     private var captureDevice: AVCaptureDevice?
     private var currentZoomFactor: CGFloat = 1
     private var containingView: UIView?
@@ -102,6 +103,7 @@ public class PhotographyKit: NSObject {
     
     /// Tries to start recording a video
     public func startVideoRecording(maxLength: TimeInterval, url: URL? = nil) throws {
+        guard allowsVideo else { return }
         timer?.invalidate()
         if let safeURL = url == nil ? URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("\(UUID().uuidString).mp4") : url {
             movieFileOutput.startRecording(to: safeURL, recordingDelegate: self)
@@ -115,6 +117,7 @@ public class PhotographyKit: NSObject {
     
     
     public func endVideoRecording() {
+        guard allowsVideo else { return }
         movieFileOutput.stopRecording()
     }
     
@@ -223,10 +226,10 @@ public class PhotographyKit: NSObject {
     
     // MARK: - Initializers
     
-    public init?(view: UIView, delegate: PhotographyKitDelegate) throws {
-        super.init()
-        
+    public init?(view: UIView, delegate: PhotographyKitDelegate, allowsVideo: Bool) throws {
+        self.allowsVideo = allowsVideo
         self.delegate = delegate
+        super.init()
         
         view.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(focus(_:))))
         view.addGestureRecognizer(UIPinchGestureRecognizer(target: self, action: #selector(zoom(_:))))
@@ -248,14 +251,14 @@ public class PhotographyKit: NSObject {
     
     private func setupCamera(view: UIView) throws {
         let videoDeviceDiscoverySession = AVCaptureDevice.DiscoverySession(deviceTypes: [.builtInWideAngleCamera], mediaType: AVMediaType.video, position: .back)
-        let audioDeviceDiscoverySession = AVCaptureDevice.DiscoverySession(deviceTypes: [.builtInMicrophone], mediaType: AVMediaType.audio, position: .unspecified)
+        let audioDeviceDiscoverySession = allowsVideo ? AVCaptureDevice.DiscoverySession(deviceTypes: [.builtInMicrophone], mediaType: AVMediaType.audio, position: .unspecified) : nil
         
         guard let videoCaptureDevice = videoDeviceDiscoverySession.devices.first else {
             throw PhotographyKitError.failedToConnectToDeviceCamera
         }
-        guard let audioCaptureDevice = audioDeviceDiscoverySession.devices.first else {
-            throw PhotographyKitError.failedToConnectToDeviceMicrophone
-        }
+        
+        let audioCaptureDevice = audioDeviceDiscoverySession?.devices.first
+        
         try videoCaptureDevice.lockForConfiguration()
         defer { videoCaptureDevice.unlockForConfiguration() }
         videoCaptureDevice.torchMode = .auto
@@ -264,15 +267,16 @@ public class PhotographyKit: NSObject {
     }
     
     
-    private func setupPreview(view: UIView, videoCaptureDevice: AVCaptureDevice, audioCaptureDevice: AVCaptureDevice) throws {
+    private func setupPreview(view: UIView, videoCaptureDevice: AVCaptureDevice, audioCaptureDevice: AVCaptureDevice?) throws {
         do {
             let captureSession = AVCaptureSession()
             
             guard let videoInput = try? AVCaptureDeviceInput(device: videoCaptureDevice) else {
                 throw PhotographyKitError.failedToConnectToDeviceCamera
             }
-            guard let audioInput = try? AVCaptureDeviceInput(device: audioCaptureDevice) else {
-                throw PhotographyKitError.failedToConnectToDeviceMicrophone
+            
+            if let audioCaptureDevice = audioCaptureDevice, let audioInput = try? AVCaptureDeviceInput(device: audioCaptureDevice), captureSession.canAddInput(audioInput) {
+                captureSession.addInput(audioInput)
             }
             
             if(captureSession.canAddInput(videoInput)) {
@@ -281,10 +285,6 @@ public class PhotographyKit: NSObject {
             
             if(captureSession.canAddOutput(imageOutput)) {
                 captureSession.addOutput(imageOutput)
-            }
-            
-            if(captureSession.canAddInput(audioInput)) {
-                captureSession.addInput(audioInput)
             }
             
             if(captureSession.canAddOutput(movieFileOutput)) {
