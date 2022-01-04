@@ -23,6 +23,7 @@ public enum PhotographyKitError: Error {
     case failedToConnectToDeviceTorch
     case failedToConnectToDeviceMicrophone
     case failedToCreateVideoFile
+    case failedToAddOutput
 }
 
 
@@ -44,6 +45,8 @@ extension PhotographyKitError: LocalizedError {
                 return "Failed to connect to device microphone"
             case .failedToCreateVideoFile:
                 return "Failed to create video file for recording"
+            case .failedToAddOutput:
+                return "Failed to add output"
         }
     }
 }
@@ -67,7 +70,7 @@ public class PhotographyKit: NSObject {
     
     //User defined photo settings
     private let zoomSensitivity: CGFloat = 0.03
-    private let delegate: PhotographyKitDelegate
+    private let delegate: PhotographyKitDelegate?
     private let allowsVideo: Bool
     
     //Capture session
@@ -86,6 +89,11 @@ public class PhotographyKit: NSObject {
     
     
     // MARK: - Actions
+    
+    /// Stop Capture session
+    public func stop() {
+        captureSession?.stopRunning()
+    }
     
     /// Tries to resets the capture session, starting the preview again.
     public func resetCamera() throws {
@@ -112,6 +120,16 @@ public class PhotographyKit: NSObject {
             })
         } else {
             throw PhotographyKitError.failedToCreateVideoFile
+        }
+    }
+    
+    
+    ///Adds output to capture session
+    public func addOutput(output: AVCaptureOutput) throws {
+        if(captureSession?.canAddOutput(output) ?? false) {
+            captureSession?.addOutput(output)
+        } else {
+            throw PhotographyKitError.failedToAddOutput
         }
     }
     
@@ -226,7 +244,7 @@ public class PhotographyKit: NSObject {
     
     // MARK: - Initializers
     
-    public init?(view: UIView, delegate: PhotographyKitDelegate, allowsVideo: Bool) throws {
+    public init?(view: UIView, delegate: PhotographyKitDelegate?, allowsVideo: Bool) throws {
         self.allowsVideo = allowsVideo
         self.delegate = delegate
         super.init()
@@ -399,7 +417,7 @@ extension PhotographyKit: AVCapturePhotoCaptureDelegate {
         guard let image = getImageFrom(photo) else { return }
         
         let photo = PhotographyKitPhoto(image: image)
-        delegate.didCaptureImage(image: photo)
+        delegate?.didCaptureImage(image: photo)
     }
     
 }
@@ -409,16 +427,16 @@ extension PhotographyKit: AVCapturePhotoCaptureDelegate {
 extension PhotographyKit: AVCaptureFileOutputRecordingDelegate {
     
     public func fileOutput(_ output: AVCaptureFileOutput, didStartRecordingTo fileURL: URL, from connections: [AVCaptureConnection]) {
-        delegate.didStartRecordingVideo()
+        delegate?.didStartRecordingVideo()
     }
     
     
     public func fileOutput(_ output: AVCaptureFileOutput, didFinishRecordingTo outputFileURL: URL, from connections: [AVCaptureConnection], error: Error?) {
         guard error == nil else {
-            delegate.didFailRecordingVideo(error: error!)
+            delegate?.didFailRecordingVideo(error: error!)
             return
         }
-        delegate.didFinishRecordingVideo(url: outputFileURL)
+        delegate?.didFinishRecordingVideo(url: outputFileURL)
     }
     
 }

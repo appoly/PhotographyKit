@@ -1,7 +1,7 @@
 Pod::Spec.new do |spec|
 
   spec.name         = "PhotographyKit"
-  spec.version      = "0.24"
+  spec.version      = "0.25"
   spec.license      = "MIT"
   spec.summary      = "A swift library for quickly integrating a built in camera session into your app."
   spec.homepage     = "https://github.com/appoly/PhotographyKit"
