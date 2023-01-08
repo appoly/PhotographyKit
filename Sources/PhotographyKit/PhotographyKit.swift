@@ -146,7 +146,7 @@ public class PhotographyKit: NSObject {
             throw PhotographyKitError.failedToConnectToDeviceCamera
         }
         
-        if(device.hasTorch) {
+        if(device.isTorchModeSupported(mode)) {
             do {
                 try device.lockForConfiguration()
                 defer { device.unlockForConfiguration() }
@@ -279,7 +279,9 @@ public class PhotographyKit: NSObject {
         
         try videoCaptureDevice.lockForConfiguration()
         defer { videoCaptureDevice.unlockForConfiguration() }
-        videoCaptureDevice.torchMode = .auto
+        if(videoCaptureDevice.isTorchModeSupported(.auto)) {
+            videoCaptureDevice.torchMode = .auto
+        }
         
         try setupPreview(view: view, videoCaptureDevice: videoCaptureDevice, audioCaptureDevice: audioCaptureDevice)
     }
