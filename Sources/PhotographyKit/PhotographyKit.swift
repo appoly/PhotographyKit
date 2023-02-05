@@ -323,8 +323,9 @@ public class PhotographyKit: NSObject {
     private func setupCaptureSession(_ captureSession: AVCaptureSession, view: UIView) {
         containingView = view
         videoPreviewLayer = AVCaptureVideoPreviewLayer(session: captureSession)
-        videoPreviewLayer?.videoGravity = AVLayerVideoGravity.resizeAspectFill
-        videoPreviewLayer?.frame = containingView!.layer.bounds
+        videoPreviewLayer?.videoGravity = .resize
+        videoPreviewLayer?.connection?.videoOrientation = UIDevice.current.orientation.asAVCaptureVideoOrientation
+        videoPreviewLayer?.frame = UIScreen.main.bounds
         view.layer.addSublayer(videoPreviewLayer!)
         self.captureSession = captureSession
     }
@@ -439,6 +440,26 @@ extension PhotographyKit: AVCaptureFileOutputRecordingDelegate {
             return
         }
         delegate?.didFinishRecordingVideo(url: outputFileURL)
+    }
+    
+}
+
+
+
+
+extension UIDeviceOrientation {
+    
+    var asAVCaptureVideoOrientation: AVCaptureVideoOrientation {
+        switch self {
+            case .landscapeLeft:
+                return .landscapeLeft
+            case .landscapeRight:
+                return .landscapeRight
+            case .portraitUpsideDown:
+                return .portraitUpsideDown
+            default:
+                return .portrait
+        }
     }
     
 }
