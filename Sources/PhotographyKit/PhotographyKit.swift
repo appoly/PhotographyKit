@@ -313,7 +313,12 @@ public class PhotographyKit: NSObject {
             
             setupCaptureSession(captureSession, view: view)
             self.captureDevice = videoCaptureDevice
-            try startCaptureSession()
+            DispatchQueue(label: "capture_session", qos: .background).async {
+                if(!captureSession.isRunning) {
+                    captureSession.commitConfiguration()
+                    captureSession.startRunning()
+                }
+            }
         } catch {
             throw PhotographyKitError.failedToConnectToDeviceCamera
         }
@@ -333,17 +338,6 @@ public class PhotographyKit: NSObject {
     
     
     // MARK: - Capture Session Controls
-    
-    private func startCaptureSession() throws {
-        guard let captureSession = captureSession else {
-            throw PhotographyKitError.failedToConnectToDeviceCamera
-        }
-        
-        if(!captureSession.isRunning) {
-            captureSession.startRunning()
-        }
-    }
-    
     
     private func stopCaptureSession() throws {
         guard let captureSession = captureSession else {
